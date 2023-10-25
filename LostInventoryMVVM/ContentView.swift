@@ -8,7 +8,6 @@ struct InventoryItem: Identifiable {
     var timeLastSeen: String
 }
 
-//adding image
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
     @Environment(\.presentationMode) private var presentationMode
@@ -42,6 +41,108 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
 }
 
+struct ContentView: View {
+    @ObservedObject var viewModel = InventoryViewModel()
+    @State private var isAddItemViewPresented: Bool = false
+    @State private var isDeleteItemViewPresented: Bool = false
+    @State private var isImagePickerPresentedForItem: InventoryItem? = nil
+
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: VStack(spacing: 50) {
+                    Text("Matthew's lost inventory system")
+                        .font(.headline)
+                        .padding(.top, 100)
+
+                    HStack {
+                        Text("Name Of Items").bold()
+                        Spacer()
+                        Text("Sports played").bold()
+                        Spacer()
+                        Text("Object last seen").bold()
+                        Spacer()
+                        Text("Time last seen").bold()
+                    }
+                    .padding(.horizontal, 10)
+                }) {
+                    ForEach(viewModel.items) { item in
+                        HStack {
+                            Text(item.name)
+                                .frame(width: 80, alignment: .leading)
+                            Spacer()
+                            Text(item.sport)
+                                .frame(width: 90, alignment: .leading)
+                            Spacer()
+                            Button(action: {
+                                isImagePickerPresentedForItem = item
+                            }) {
+                                if let image = item.image {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 30, height: 30)
+                                } else {
+                                    Circle()
+                                        .frame(width: 30, height: 30)
+                                        .foregroundColor(Color.gray.opacity(0.7))
+                                }
+                            }
+                            .sheet(item: $isImagePickerPresentedForItem) { _ in
+                                ImagePicker(selectedImage: .constant(isImagePickerPresentedForItem?.image))
+                            }
+                            Spacer()
+                            Text(item.timeLastSeen)
+                                .frame(width: 90, alignment: .center)
+                        }
+                        .padding(.vertical, 5)
+                    }
+                    .onDelete(perform: deleteItems)
+                }
+                Section {
+                    Button(action: {
+                        isAddItemViewPresented.toggle()
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Add Item")
+                                .font(.title2)
+                                .padding()
+                                .background(Color.green.opacity(0.3))
+                                .cornerRadius(10)
+                            Spacer()
+                        }
+                    }
+                    .sheet(isPresented: $isAddItemViewPresented) {
+                        AddItemView(items: $viewModel.items)
+                    }
+
+                    Button(action: {
+                        isDeleteItemViewPresented.toggle()
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Delete Item")
+                                .font(.title2)
+                                .padding()
+                                .background(Color.red.opacity(0.3))
+                                .cornerRadius(10)
+                            Spacer()
+                        }
+                    }
+                    .sheet(isPresented: $isDeleteItemViewPresented) {
+                        DeleteItemView(items: $viewModel.items)
+                    }
+                }
+            }
+            .listStyle(GroupedListStyle())
+        }
+    }
+    
+    func deleteItems(at offsets: IndexSet) {
+        viewModel.items.remove(atOffsets: offsets)
+    }
+}
 struct DeleteItemView: View {
     @Environment(\.presentationMode) var presentationMode
     @Binding var items: [InventoryItem]
@@ -71,21 +172,22 @@ struct DeleteItemView: View {
                       if let toDelete = selectedItem {
                           if let index = items.firstIndex(where: { $0.id == toDelete.id }) {
                               items.remove(at: index)
-                              presentationMode.wrappedValue.dismiss()  // This will pop the view after deleting the item
                           }
                       }
                   },
                   secondaryButton: .cancel())
         }
+        .navigationBarTitle("Delete Items", displayMode: .inline)
+        .navigationBarItems(leading: Button("Back") {
+            presentationMode.wrappedValue.dismiss()
+        })
     }
 }
 
-// add item
 
 struct AddItemView: View {
     @Environment(\.presentationMode) var presentationMode
     @Binding var items: [InventoryItem]
-
     
     @State private var itemName: String = ""
     @State private var sport: String = ""
@@ -94,48 +196,41 @@ struct AddItemView: View {
     @State private var timeLastSeen: String = ""
 
     var body: some View {
-        Form {
-            TextField("Item Name", text: $itemName)
-            TextField("Sports Played", text: $sport)
-            Button(action: {
-                isImagePickerPresented = true
-            }) {
-                HStack {
-                    if let image = selectedImage {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 100, height: 100)
-                    } else {
-                        Text("Upload Image")
+        NavigationView {
+            Form {
+                TextField("Item Name", text: $itemName)
+                TextField("Sports Played", text: $sport)
+                Button(action: {
+                    isImagePickerPresented.toggle()
+                }) {
+                    HStack {
+                        if let image = selectedImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 100, height: 100)
+                        } else {
+                            Text("Upload Image")
+                        }
                     }
                 }
+                .sheet(isPresented: $isImagePickerPresented) {
+                    ImagePicker(selectedImage: $selectedImage)
+                }
+                TextField("Time Last Seen", text: $timeLastSeen)
+                
+                Button(action: {
+                    let newItem = InventoryItem(name: itemName, sport: sport, image: selectedImage, timeLastSeen: timeLastSeen)
+                    items.append(newItem)
+                    presentationMode.wrappedValue.dismiss()
+                }, label: {
+                    Text("Add Item")
+                })
             }
-            .sheet(isPresented: $isImagePickerPresented, onDismiss: {
-                isImagePickerPresented = false
-            }) {
-                ImagePicker(selectedImage: $selectedImage)
-            }
-            TextField("Time Last Seen", text: $timeLastSeen)
-            
-            Button(action: {
-                let newItem = InventoryItem(name: itemName, sport: sport, image: selectedImage, timeLastSeen: timeLastSeen)
-                items.append(newItem)
-                presentationMode.wrappedValue.dismiss()  // This will pop the view after adding the item
-            }, label: {
-                Text("Add Item")
+            .navigationBarTitle("Add Item", displayMode: .inline)
+            .navigationBarItems(leading: Button("Cancel") {
+                presentationMode.wrappedValue.dismiss()
             })
-        }
-    }
-}
-
-//uploadding imafge
-
-struct ImageUploadView: View {
-    var body: some View {
-        VStack {
-            Text("Upload your image here!")
-                .padding()
         }
     }
 }
@@ -147,125 +242,6 @@ class InventoryViewModel: ObservableObject {
         InventoryItem(name: "Item 3", sport: "Soccer", timeLastSeen: "Time"),
         InventoryItem(name: "Item 4", sport: "Soccer", timeLastSeen: "Time")
     ]
-}
-
-struct ContentView: View {
-    @ObservedObject var viewModel = InventoryViewModel()
-    @State private var showImageUploadView = false
-    @State private var showAddItemView: Bool = false
-    @State private var showDeleteItemView: Bool = false
-    @State private var currentPage: Int = 1
-    let itemsPerPage: Int = 5
-    private var numberOfPages: Int {
-        (viewModel.items.count - 1) / itemsPerPage + 1
-    }
-    private var pagedItems: [InventoryItem] {
-        Array(viewModel.items.dropFirst((currentPage - 1) * itemsPerPage).prefix(itemsPerPage))
-    }
-
-    var body: some View {
-        NavigationView {
-            List {
-                Section(header: VStack(spacing: 50) {
-                    Text("Matthew's lost inventory system")
-                        .font(.headline)
-                        .padding(.top, 100)
-
-                    HStack {
-                        Text("Name Of Items").bold()
-                        Spacer()
-                        Text("Sports played").bold()
-                        Spacer()
-                        Text("Object last seen").bold()
-                        Spacer()
-                        Text("Time last seen").bold()
-                    }
-                    .padding(.horizontal, 10)
-                }) {
-                   
-                    ForEach(pagedItems) { item in
-                        HStack {
-                            Text(item.name)
-                                .frame(width: 80, alignment: .leading)
-                            Spacer()
-                            Text(item.sport)
-                                .frame(width: 90, alignment: .leading)
-                            Spacer()
-                            NavigationLink(destination: ImageUploadView(), isActive: $showImageUploadView) {
-                                ZStack {
-                                    Circle()
-                                        .frame(width: 30, height: 30)
-                                        .foregroundColor(Color.gray.opacity(0.7))
-                                    Text("+")
-                                        .font(.headline)
-                                }
-                            }
-                            Spacer()
-                            Text(item.timeLastSeen)
-                                .frame(width: 90, alignment: .center)
-                        }
-                        .padding(.vertical, 5)
-                    }
-                }
-                Section {
-                    HStack {
-                        NavigationLink(destination: AddItemView(items: $viewModel.items), isActive: $showAddItemView) {
-                            Text("Add Item")
-                                .font(.title2)
-                                .padding()
-                                .background(Color.green.opacity(0.3))
-                                .cornerRadius(10)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        NavigationLink(destination: DeleteItemView(items: $viewModel.items), isActive: $showDeleteItemView) {
-                            Text("Delete item")
-                                .font(.title2)
-                                .padding()
-                                .background(Color.red.opacity(0.3))
-                                .cornerRadius(10)
-                        }
-
-                        Spacer()
-                        Text("Object Found")
-                            .font(.title2)
-                            .padding()
-                            .background(Color.orange.opacity(0.3))
-                            .cornerRadius(10)
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 10)
-                }
-                
-                // Pagination Section at the bottom
-                Section {
-                    HStack {
-                        Button("Previous") {
-                            if currentPage > 1 {
-                                currentPage -= 1
-                            }
-                        }
-                        .disabled(currentPage == 1)
-                        
-                        Spacer()
-                        
-                        Text("\(currentPage)/\(numberOfPages)")
-                
-                        Spacer()
-                        
-                        Button("Next") {
-                            if currentPage < numberOfPages {
-                                currentPage += 1
-                            }
-                        }
-                        .disabled(currentPage == numberOfPages)
-                    }
-                }
-                
-            }
-            .listStyle(GroupedListStyle())
-        }
-    }
 }
 
 struct ContentView_Previews: PreviewProvider {
