@@ -35,7 +35,6 @@ struct ImagePicker: UIViewControllerRepresentable {
             if let image = info[.originalImage] as? UIImage {
                 parent.selectedImage = image
             }
-
             parent.presentationMode.wrappedValue.dismiss()
         }
     }
@@ -45,7 +44,7 @@ struct ContentView: View {
     @ObservedObject var viewModel = InventoryViewModel()
     @State private var isAddItemViewPresented: Bool = false
     @State private var isDeleteItemViewPresented: Bool = false
-    @State private var isImagePickerPresentedForItem: InventoryItem? = nil
+    @State private var currentItemForImagePicker: InventoryItem?
 
     var body: some View {
         NavigationView {
@@ -66,39 +65,53 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 10)
                 }) {
-                    ForEach(viewModel.items) { item in
+                    
+                    ForEach(viewModel.items.indices, id: \.self) { index in
                         HStack {
-                            Text(item.name)
-                                .frame(width: 80, alignment: .leading)
+                            Text(viewModel.items[index].name)
+                                .frame(width: 60, alignment: .leading)
                             Spacer()
-                            Text(item.sport)
-                                .frame(width: 90, alignment: .leading)
+                            Text(viewModel.items[index].sport)
+                                .frame(width: 60, alignment: .leading)
                             Spacer()
                             Button(action: {
-                                isImagePickerPresentedForItem = item
+                                currentItemForImagePicker = viewModel.items[index]
                             }) {
-                                if let image = item.image {
+                                if let image = viewModel.items[index].image {
                                     Image(uiImage: image)
                                         .resizable()
                                         .scaledToFit()
                                         .frame(width: 30, height: 30)
                                 } else {
-                                    Circle()
+                                    Image(systemName: "photo")
+                                        .resizable()
+                                        .scaledToFit()
                                         .frame(width: 30, height: 30)
                                         .foregroundColor(Color.gray.opacity(0.7))
                                 }
                             }
-                            .sheet(item: $isImagePickerPresentedForItem) { _ in
-                                ImagePicker(selectedImage: .constant(isImagePickerPresentedForItem?.image))
+                            .sheet(item: $currentItemForImagePicker, onDismiss: {
+                                currentItemForImagePicker = nil
+                            }) { item in
+                                ImagePicker(selectedImage: Binding(
+                                    get: { item.image },
+                                    set: { newImage in
+                                        if let index = viewModel.items.firstIndex(where: { $0.id == item.id }) {
+                                            viewModel.items[index].image = newImage
+                                        }
+                                    }
+                                ))
                             }
+                            
                             Spacer()
-                            Text(item.timeLastSeen)
+                            Text(viewModel.items[index].timeLastSeen)
                                 .frame(width: 90, alignment: .center)
                         }
                         .padding(.vertical, 5)
                     }
                     .onDelete(perform: deleteItems)
                 }
+                
                 Section {
                     Button(action: {
                         isAddItemViewPresented.toggle()
@@ -133,16 +146,34 @@ struct ContentView: View {
                     .sheet(isPresented: $isDeleteItemViewPresented) {
                         DeleteItemView(items: $viewModel.items)
                     }
+                    Button(action: {
+                        isDeleteItemViewPresented.toggle()
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Object found")
+                                .font(.title2)
+                                .padding()
+                                .background(Color.red.opacity(0.3))
+                                .cornerRadius(10)
+                            Spacer()
+                        }
+                    }
+                    .sheet(isPresented: $isDeleteItemViewPresented) {
+                        DeleteItemView(items: $viewModel.items)
+                    }
                 }
             }
             .listStyle(GroupedListStyle())
         }
     }
     
+    
     func deleteItems(at offsets: IndexSet) {
         viewModel.items.remove(atOffsets: offsets)
     }
 }
+
 struct DeleteItemView: View {
     @Environment(\.presentationMode) var presentationMode
     @Binding var items: [InventoryItem]
@@ -150,56 +181,85 @@ struct DeleteItemView: View {
     @State private var showDeleteAlert: Bool = false
 
     var body: some View {
-        List {
-            ForEach(items) { item in
-                Button(action: {
-                    self.selectedItem = item
-                    self.showDeleteAlert = true
-                }) {
-                    HStack {
-                        Text(item.name)
-                        Spacer()
-                        Image(systemName: "trash")
-                            .foregroundColor(.red)
+        VStack {
+            Text("...")
+                .font(.title)
+                
+        }
+            Text("Delete an Item")
+                .font(.headline)
+                .padding()
+
+            List {
+                ForEach(items) { item in
+                    Button(action: {
+                        self.selectedItem = item
+                        self.showDeleteAlert = true
+                    }) {
+                        HStack {
+                            Text(item.name)
+                            Spacer()
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                        }
                     }
                 }
             }
-        }
-        .alert(isPresented: $showDeleteAlert) {
-            Alert(title: Text("Confirm Deletion"),
-                  message: Text("Are you sure you want to delete \(selectedItem?.name ?? "this item")?"),
-                  primaryButton: .destructive(Text("Delete")) {
-                      if let toDelete = selectedItem {
-                          if let index = items.firstIndex(where: { $0.id == toDelete.id }) {
-                              items.remove(at: index)
+            .alert(isPresented: $showDeleteAlert) {
+                Alert(title: Text("Confirm Deletion"),
+                      message: Text("Are you sure you want to delete \(selectedItem?.name ?? "this item")?"),
+                      primaryButton: .destructive(Text("Delete")) {
+                          if let toDelete = selectedItem {
+                              if let index = items.firstIndex(where: { $0.id == toDelete.id }) {
+                                  items.remove(at: index)
+                              }
                           }
-                      }
-                  },
-                  secondaryButton: .cancel())
-        }
+                      },
+                      secondaryButton: .cancel())
+            }
+            
+     
         .navigationBarTitle("Delete Items", displayMode: .inline)
-        .navigationBarItems(leading: Button("Back") {
+        .navigationBarItems(leading: Button("Cancel") {
             presentationMode.wrappedValue.dismiss()
         })
     }
 }
 
-
 struct AddItemView: View {
     @Environment(\.presentationMode) var presentationMode
     @Binding var items: [InventoryItem]
     
-    @State private var itemName: String = ""
-    @State private var sport: String = ""
+    @State private var itemName: String = "Name of Item"
+    @State private var sport: String = "Name of sport"
     @State private var selectedImage: UIImage?
     @State private var isImagePickerPresented: Bool = false
-    @State private var timeLastSeen: String = ""
+    @State private var selectedDate: Date = Date()
+    
+    let itemNames = ["Select Item","Ball", "Glove", "Pads"]
+    let sports = ["Select Sport","Soccer", "Volleyball", "Basketball", "Tennis", "Badminton"]
 
+    let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM/yy"
+        return formatter
+    }()
+    
     var body: some View {
         NavigationView {
             Form {
-                TextField("Item Name", text: $itemName)
-                TextField("Sports Played", text: $sport)
+                Picker("Item Name", selection: $itemName) {
+                    ForEach(itemNames, id: \.self) {
+                        Text($0)
+                    }
+                }
+
+                Picker("Sports Played", selection: $sport) {
+                    ForEach(sports, id: \.self) {
+                        Text($0)
+                    }
+                }
+
                 Button(action: {
                     isImagePickerPresented.toggle()
                 }) {
@@ -217,13 +277,22 @@ struct AddItemView: View {
                 .sheet(isPresented: $isImagePickerPresented) {
                     ImagePicker(selectedImage: $selectedImage)
                 }
-                TextField("Time Last Seen", text: $timeLastSeen)
                 
+                DatePicker("Select Date", selection: $selectedDate, displayedComponents: .date)
+                    .datePickerStyle(GraphicalDatePickerStyle())
+                    .padding()
+
                 Button(action: {
-                    let newItem = InventoryItem(name: itemName, sport: sport, image: selectedImage, timeLastSeen: timeLastSeen)
+                    let newItem = InventoryItem(
+                        name: itemName,
+                        sport: sport,
+                        image: selectedImage,
+                        timeLastSeen: dateFormatter.string(from: selectedDate)
+                    )
                     items.append(newItem)
                     presentationMode.wrappedValue.dismiss()
-                }, label: {
+                },
+                label: {
                     Text("Add Item")
                 })
             }
@@ -235,13 +304,22 @@ struct AddItemView: View {
     }
 }
 
+
 class InventoryViewModel: ObservableObject {
     @Published var items: [InventoryItem] = [
-        InventoryItem(name: "Item 1", sport: "Soccer", timeLastSeen: "10/10/23"),
-        InventoryItem(name: "Item 2", sport: "Soccer", timeLastSeen: "Time"),
-        InventoryItem(name: "Item 3", sport: "Soccer", timeLastSeen: "Time"),
-        InventoryItem(name: "Item 4", sport: "Soccer", timeLastSeen: "Time")
+        InventoryItem(name: "Ball1", sport: "Soccer", timeLastSeen: "10/10/23"),
+        InventoryItem(name: "Ball2", sport: "Soccer", timeLastSeen: "11/10/23"),
+        InventoryItem(name: "Ball3", sport: "Soccer", timeLastSeen: "12/10/23"),
+        InventoryItem(name: "Ball4", sport: "Soccer", timeLastSeen: "13/10/23"),
+        InventoryItem(name: "Ball5", sport: "Soccer", timeLastSeen: "14/10/23"),
+        // ... add more items if needed
     ]
+    let itemsPerPage = 4
+    @Published var currentPage = 1
+    
+    func nextPage() {
+         currentPage += 1
+     }
 }
 
 struct ContentView_Previews: PreviewProvider {
